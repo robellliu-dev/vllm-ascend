@@ -43,15 +43,32 @@ env:
   UV_SYSTEM_PYTHON: 1
 
 jobs:
+    vllm-release-tag:
+        runs-on: ubuntu-latest
+        outputs:
+          matrix: ${{ steps.vllm.outputs.matrix }}
+        steps:
+          - uses: actions/checkout@v6
+          - name: Read verified vLLM release tag
+            id: vllm
+            run: |
+              release_tag="$(tr -d '[:space:]' < .github/vllm-release-tag.commit)"
+              [[ "${release_tag}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-].*)?$ ]] || {
+                echo "::error file=.github/vllm-release-tag.commit::invalid vLLM release tag: ${release_tag}"
+                exit 1
+              }
+              echo "matrix=[\"${release_tag}\"]" >> "$GITHUB_OUTPUT"
+
     e2e-upstream_singlecard:
+        needs: [vllm-release-tag]
         runs-on: linux-aarch64-a2b3-1
         strategy:
           fail-fast: false
           matrix:
             part: [0, 1, 2, 3]
-            vllm: [v0.20.2]
+            vllm: ${{ fromJSON(needs.vllm-release-tag.outputs.matrix) }}
         container:
-          image: swr.cn-southwest-2.myhuaweicloud.com/base_image/ascend-ci/cann:9.0.0-910b-ubuntu22.04-py3.12
+          image: swr.cn-southwest-2.myhuaweicloud.com/base_image/ascend-ci/cann:9.0.0-910b-ubuntu22.04-py3.11
           env:
             VLLM_LOGGING_LEVEL: ERROR
             HF_HUB_OFFLINE: 1
@@ -127,14 +144,15 @@ jobs:
                 --continue-on-error
               
     e2e-upstream_a2_2:
+        needs: [vllm-release-tag]
         runs-on: linux-aarch64-a2b3-2
         strategy:
           fail-fast: false
           matrix:
             part: [0]
-            vllm: [v0.20.2]
+            vllm: ${{ fromJSON(needs.vllm-release-tag.outputs.matrix) }}
         container:
-          image: swr.cn-southwest-2.myhuaweicloud.com/base_image/ascend-ci/cann:9.0.0-910b-ubuntu22.04-py3.12
+          image: swr.cn-southwest-2.myhuaweicloud.com/base_image/ascend-ci/cann:9.0.0-910b-ubuntu22.04-py3.11
           env:
             VLLM_LOGGING_LEVEL: ERROR
             HF_HUB_OFFLINE: 1
@@ -201,14 +219,15 @@ jobs:
                 --continue-on-error
 
     e2e-upstream_a2_4:
+        needs: [vllm-release-tag]
         runs-on: linux-aarch64-a2b3-4
         strategy:
           fail-fast: false
           matrix:
             part: [0]
-            vllm: [v0.20.2]
+            vllm: ${{ fromJSON(needs.vllm-release-tag.outputs.matrix) }}
         container:
-          image: swr.cn-southwest-2.myhuaweicloud.com/base_image/ascend-ci/cann:9.0.0-910b-ubuntu22.04-py3.12
+          image: swr.cn-southwest-2.myhuaweicloud.com/base_image/ascend-ci/cann:9.0.0-910b-ubuntu22.04-py3.11
           env:
             VLLM_LOGGING_LEVEL: ERROR
             HF_HUB_OFFLINE: 1
