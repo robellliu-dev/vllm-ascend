@@ -41,7 +41,34 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  vllm-verified-refs:
+    if: ${{ github.event.action != 'labeled' || github.event.label.name == 'ready' }}
+    runs-on: ubuntu-latest
+    outputs:
+      main_commit: ${{ steps.vllm.outputs.main_commit }}
+      matrix: ${{ steps.vllm.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Read verified vLLM refs
+        id: vllm
+        run: |
+          main_commit="$(tr -d '[:space:]' < .github/vllm-main-verified.commit)"
+          release_tag="$(tr -d '[:space:]' < .github/vllm-release-tag.commit)"
+          [[ "${main_commit}" =~ ^[0-9a-f]{7,40}$ ]] || {
+            echo "::error file=.github/vllm-main-verified.commit::invalid vLLM main commit: ${main_commit}"
+            exit 1
+          }
+          [[ "${release_tag}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-].*)?$ ]] || {
+            echo "::error file=.github/vllm-release-tag.commit::invalid vLLM release tag: ${release_tag}"
+            exit 1
+          }
+          {
+            echo "main_commit=${main_commit}"
+            echo "matrix=[\"${main_commit}\",\"${release_tag}\"]"
+          } >> "$GITHUB_OUTPUT"
+
   lint-and-select-tests:
+    needs: [vllm-verified-refs]
     if: ${{ github.event.action != 'labeled' || github.event.label.name == 'ready' }}
     runs-on: linux-amd64-cpu-8-hk
     container:
@@ -92,7 +119,7 @@ jobs:
         with:
           repository: vllm-project/vllm
           path: ./vllm-empty
-          ref: 9090368b650896bf5fc990c921df7eb4c20355a5
+          ref: ${{ needs.vllm-verified-refs.outputs.main_commit }}
 
       - uses: dorny/paths-filter@v4
         id: filter
@@ -154,11 +181,11 @@ jobs:
             --run-all-cpu
 
   run-selected-tests:
-    needs: lint-and-select-tests
+    needs: [vllm-verified-refs, lint-and-select-tests]
     if: ${{ needs.lint-and-select-tests.outputs.has_tests == 'true' && contains(github.event.pull_request.labels.*.name, 'ready') }}
     strategy:
       matrix:
-        vllm_version: [9090368b650896bf5fc990c921df7eb4c20355a5, v0.20.2]
+        vllm_version: ${{ fromJSON(needs.vllm-verified-refs.outputs.matrix) }}
     uses: ./.github/workflows/_selected_tests.yaml
     with:
       vllm: ${{ matrix.vllm_version }}
